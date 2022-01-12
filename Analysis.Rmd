@@ -1,0 +1,376 @@
+---
+title: "Analysis"
+author: "Julien Christophe Piquet"
+date: "15/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=F)
+```
+
+# **DATA FORMATION**
+
+```{r folder}
+folder_data<-"E:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data"
+folder_analysis<-"E:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Analysis"
+folder_results<-"E:/Research/Projects/A_2019_CSIC_TROPHIC/Communication/Paper"
+```
+
+We define the consumed groups that will be the main focus of our analyses.
+
+```{r defining interesting groups}
+library(readxl)
+consumed_groups<-read_excel(paste0(folder_data,"/data_index_diet.xlsx")) # we use the data from the diet
+consumed_groups<-consumed_groups[-which(consumed_groups$order=="Polydesmida"),] # We remove Polydesmida (did not appear) to avoid including Polyxenida, which is not consumed
+consumed_groups<-consumed_groups[,1]
+consumed_groups<-apply(consumed_groups,2,toupper) # changing to uppercase
+consumed_groups<-apply(consumed_groups,2,function(x) substr(x,1,4)) # keeping only the 4 letters from the beginning
+```
+
+## **Pitfall data**
+
+```{r pitfall data, include=F}
+library(readxl)
+library(dplyr)
+# Detailed data
+data_pitfall<-read_excel(paste0(folder_data,"/data_pitfall.xlsx"), sheet = "data")
+## Variables
+factors<-c(1:3,6:9)
+data_pitfall[,factors]<-lapply(data_pitfall[,factors],factor)
+### Including FORM in HYME
+data_pitfall$HYME<-data_pitfall$HYME+data_pitfall$FORM
+### Including doubtful traps as inactive
+data_pitfall$active<-recode_factor(data_pitfall$active,DOU="NO")
+remove(factors)
+## Removing inactive_traps
+data_pitfall<-data_pitfall[data_pitfall$active=="YES",]
+data_pitfall<-data_pitfall[,-c(7)]
+
+# Creating overall richness and overall abundance from consumed groups
+pitfall_groups<-match(consumed_groups,colnames(data_pitfall)) # Identifying groups that will be analyzed
+pitfall_groups<-na.exclude(pitfall_groups)
+data_pitfall$ABUND_prey<-apply(data_pitfall[pitfall_groups],1,sum)
+```
+
+## **Beating data**
+
+```{r data frmation beating, include=F}
+# Detailed data
+data_beating<-read_excel(paste0(folder_data,"/data_beating&sweeping.xlsx"),sheet="data")
+## Removing beating and duplicates
+data_beating<-data_beating[data_beating$sampling=="BEAT",]
+data_beating<-data_beating[data_beating$rep=="NO",]
+## Including FORM in HYME
+data_beating$HYME<-data_beating$HYME+data_beating$FORM
+## Removing unnecessary columns and indicating factors
+data_beating<-data_beating[,-c(5:7)]
+factors<-c(1:3,5:8)
+data_beating[,factors]<-lapply(data_beating[,factors],factor)
+remove(factors)
+
+# Creating overall richness and abundance from consumed groups
+beating_groups<-match(consumed_groups,colnames(data_beating)) # Identifying groups that will be analyzed
+beating_groups<-na.exclude(beating_groups)
+data_beating$ABUND_prey<-apply(data_beating[beating_groups],1,sum)
+```
+
+## **Sweeping data**
+
+```{r data frmation sweeping, include=F}
+# Detailed data
+data_sweeping<-read_excel(paste0(folder_data,"/data_beating&sweeping.xlsx"),sheet="data")
+## Removing beating and duplicates
+data_sweeping<-data_sweeping[data_sweeping$sampling=="SWEE",]
+data_sweeping<-data_sweeping[data_sweeping$rep=="NO",]
+## Including FORM in HYME
+data_sweeping$HYME<-data_sweeping$HYME+data_sweeping$FORM
+## Removing unnecessary columns and indicating factors
+data_sweeping<-data_sweeping[,-c(5:7,11)]
+factors<-c(1:3,5:7)
+data_sweeping[,factors]<-lapply(data_sweeping[,factors],factor)
+remove(factors)
+
+# Creating overall richness and abundance from consumed groups
+sweeping_groups<-match(consumed_groups,colnames(data_sweeping)) # Identifying groups that will be analyzed
+sweeping_groups<-na.exclude(sweeping_groups)
+data_sweeping$ABUND_prey<-apply(data_sweeping[sweeping_groups],1,sum)
+```
+
+# **INVERTEBRATE SAMPLING**
+
+## **Summary table and cluster analysis**
+
+```{r invertebrate sampling}
+library(tidyverse)
+library(car)
+library(onewaytests)
+
+length(unique(c(colnames(data_pitfall[,9:42]),colnames(data_beating[,9:33]),colnames(data_sweeping[,8:32]))))-1 # Number of orders minus STYL
+
+tapply(data_pitfall$ABUND,data_pitfall$snakes,length) # calculating the number of traps
+length(which(apply(data_pitfall[,9:42],2,sum)>0))-1
+total_invertebrates_pitfall<-sum(tapply(data_pitfall$ABUND,data_pitfall$snakes,sum)) - sum(data_pitfall$STYL) # calculating the number of invertebrates captured minus STYL
+(sum(data_pitfall$ABUND_prey)/total_invertebrates_pitfall)*100
+sum(data_pitfall$ABUND_prey) # Total numer of invertebrates in pitfall
+length(pitfall_groups) # Number of consumed orders present in pitfall
+
+# Beating
+tapply(data_beating$ABUND,data_beating$snakes,length)# calculating the number of samples
+length(which(apply(data_beating[,9:33],2,sum)>0))-1 # Minus STYL
+total_invertebrates_beating<-sum(tapply(data_beating$ABUND,data_beating$snakes,sum)) - sum(data_beating$STYL) # calculating the number of invertebrates captured
+(sum(data_beating$ABUND_prey)/total_invertebrates_beating)*100
+sum(data_beating$ABUND_prey)
+length(apply(data_beating[,beating_groups],2,sum))
+
+# Sweeping
+tapply(data_sweeping$ABUND,data_sweeping$snakes,length)# calculating the number of samples
+length(which(apply(data_sweeping[,8:32],2,sum)>0))-1 # Minus STYL
+total_invertebrates_sweeping<-sum(tapply(data_sweeping$ABUND,data_sweeping$snakes,sum)) - sum(data_sweeping$STYL) # calculating the number of invertebrates captured
+(sum(data_sweeping$ABUND_prey)/total_invertebrates_sweeping)*100
+sum(data_sweeping$ABUND_prey)
+length(apply(data_sweeping[,sweeping_groups],2,sum))
+
+# Abundance
+## Abundance pitfall
+abundance_pitfall<-aggregate(data_pitfall[,pitfall_groups],by=list(data_pitfall$snakes,data_pitfall$month),sum)
+abundance_pitfall<-as.data.frame(abundance_pitfall)
+colnames(abundance_pitfall)<-c("snakes","month",colnames(abundance_pitfall[3:ncol(abundance_pitfall)]))
+abundance_pitfall$sampling<-rep("pitfall",nrow(abundance_pitfall))
+## Abundance beating
+abundance_beating<-aggregate(data_beating[,beating_groups],by=list(data_beating$snakes,data_beating$month),sum)
+abundance_beating<-as.data.frame(abundance_beating)
+colnames(abundance_beating)<-c("snakes","month",colnames(abundance_beating[3:ncol(abundance_beating)]))
+abundance_beating$sampling<-rep("beating",nrow(abundance_beating))
+## Abundance sweeping
+abundance_sweeping<-aggregate(data_sweeping[,sweeping_groups],by=list(data_sweeping$snakes,data_sweeping$month),sum)
+abundance_sweeping<-as.data.frame(abundance_sweeping)
+colnames(abundance_sweeping)<-c("snakes","month",colnames(abundance_sweeping[3:ncol(abundance_sweeping)]))
+abundance_sweeping$sampling<-rep("sweeping",nrow(abundance_sweeping))
+
+# Constructing the table
+abundance_table<-bind_rows(abundance_pitfall,abundance_beating,abundance_sweeping)
+
+write.csv(abundance_table,file=paste0(folder_results,sep="/","Table_summary/table_summary.csv"))
+
+# Cluster
+
+abundance<-apply(abundance_table[,3:23],2,function(x) sum(x,na.rm = T))
+abundance<-as.data.frame(abundance)
+cluster_abundance<-kmeans(abundance,3,nstart = 100)
+
+## Comparing cluster abundance
+abundance<-cbind(abundance,cluster_abundance$cluster)
+colnames(abundance)<-c("abundance","cluster")
+abundance<-as.data.frame(abundance)
+abundance$cluster<-as.factor(abundance$cluster)
+abundance$cluster_pooled<-abundance$cluster
+abundance$cluster_pooled<-replace(abundance$cluster_pooled,abundance$cluster_pooled==1,3)
+with(abundance,leveneTest(abundance,cluster))
+kw.test(abundance~cluster_pooled,data=abundance)
+tapply(abundance$abundance,abundance$cluster_pooled,mean)
+tapply(abundance$abundance,abundance$cluster,sd)
+
+abundance<-abundance[,-3]
+```
+
+
+# **DATA ANALYSIS**
+
+## **Correspondence between consumption and abundance**
+
+```{r correspondence}
+library(gplots)
+library(FSA)
+
+data_diet<-read.csv(file=paste0(folder_data,sep="/","data_index_diet.csv"),sep=",",dec=".")[,-1]
+order<-apply(data_diet,2,toupper) # changing to uppercase
+order<-apply(order,2,function(x) substr(x,1,4)) # keeping only the 4 letters from the beginning
+row.names(data_diet)<-order[,1]
+
+data_diet<-merge(as.data.frame(data_diet[,c(1,17,18)]),as.data.frame(abundance),by="row.names",all.x = T)
+rownames(data_diet)<-data_diet[,1]
+data_diet<-data_diet[,-1]
+data_diet<-data_diet[data_diet$order!="Other",]
+colnames(data_diet)[3]<-"cluster_diet"
+colnames(data_diet)[5]<-"cluster_abundance"
+
+# Relation analysis
+with(data_diet,cor.test(abundance,total_miri,method="spearman"))
+
+plot(data_diet$total_miri,data_diet$abundance)
+text(data_diet$total_miri,data_diet$abundance,data_diet$order)
+
+write.csv(data_diet,file=paste0(folder_data,sep="/","data_diet.csv"))
+
+rm(list=setdiff(ls(),c("data_pitfall","data_beating","data_sweeping","pitfall_groups","sweeping_groups","beating_groups","folder_analysis","folder_results","folder_data","consumed_groups")))
+```
+
+
+## **Trophic cascade**
+
+We first identify those orders that will not be analyzed to prevent convergence errors.
+
+```{r identification problematic orders}
+# Pitfall
+(apply(data_pitfall[,pitfall_groups],2,sum)/sum(apply(data_pitfall[,pitfall_groups],2,sum)))*100
+number_traps<-(apply(data_pitfall[,pitfall_groups],2,function(x) length(x[x!=0]))/nrow(data_pitfall))*100
+number_traps[number_traps<3]
+aggregate(data_pitfall[,pitfall_groups],list(data_pitfall$snakes),mean)
+apply(data_pitfall[,pitfall_groups],2,mean)
+pitfall_groups<-match(setdiff(names(data_pitfall[,pitfall_groups]),c("BLAT","IXOD",names(number_traps[number_traps<3]))),colnames(data_pitfall)) # We redefine pitfall groups excluding rare orders
+
+# Beating
+(apply(data_beating[,beating_groups],2,sum)/sum(apply(data_beating[,beating_groups],2,sum)))*100
+number_beats<-(apply(data_beating[,beating_groups],2,function(x) length(x[x!=0]))/nrow(data_beating))*100
+number_beats[number_beats<3]
+apply(data_beating[,beating_groups],2,mean)
+aggregate(data_beating[,beating_groups],list(data_beating$snakes),sum)
+beating_groups<-match(setdiff(names(data_beating[,beating_groups]),names(number_beats[number_beats<3])),colnames(data_beating)) # We redefine beating groups excluding rare orders
+
+# sweeping
+(apply(data_sweeping[,sweeping_groups],2,sum)/sum(apply(data_sweeping[,sweeping_groups],2,sum)))*100
+number_sweeps<-(apply(data_sweeping[,sweeping_groups],2,function(x) length(x[x!=0]))/nrow(data_sweeping))*100
+number_sweeps[number_sweeps<3]
+sweeping_groups<-match(setdiff(names(data_sweeping[,sweeping_groups]),names(number_sweeps[number_sweeps<3])),colnames(data_sweeping)) # We redefine sweeping groups excluding rare orders
+```
+
+
+### **Pitfall**
+
+```{r analysis of pitfall}
+library(glmmTMB)
+library(DHARMa)
+library(emmeans)
+library(car)
+
+models_pitfall<-lapply(data_pitfall[,pitfall_groups],function(x) glmmTMB(x~snakes*month+(1|site/trap_no),data=data_pitfall,family=nbinom2(link="log"),dispformula=~snakes*month))
+lapply(models_pitfall,function(x) plot(simulateResiduals(x,n=1000)))
+results_pitfall_table<-lapply(models_pitfall,function(x) Anova(x,type=2,component="cond"))
+results_pitfall<-results_pitfall_table
+lapply(models_pitfall,function(x) pairs(emmeans(x,~snakes|month)))
+lapply(models_pitfall,function(x) pairs(emmeans(x,~month|snakes)))
+tapply(data_pitfall$DIPT,data_pitfall$snakes,mean)
+tapply(data_pitfall$DIPT,data_pitfall$snakes,sd)
+```
+
+```{r results from graphics}
+results_pitfall<-lapply(results_pitfall,"[[","Pr(>Chisq)")
+results_pitfall_snakes<-lapply(results_pitfall_table, function(x) which(x[1]<0.05))
+results_pitfall_snakes<-results_pitfall_snakes[lapply(results_pitfall_snakes,length)>0]
+results_pitfall_interaction<-lapply(results_pitfall, function(x) which(x[3]<0.05))
+results_pitfall_interaction<-results_pitfall_interaction[lapply(results_pitfall_interaction,length)>0]
+results_pitfall<-unique(names(c(results_pitfall_snakes,results_pitfall_interaction)))
+group_means<-lapply(data_pitfall[,results_pitfall],function(x) aggregate(x,by=list(data_pitfall$snakes,data_pitfall$month),mean))
+group_means_pitfall_graph<-cbind(group_means[[1]][,1:2],do.call(cbind,lapply(group_means,"[",-c(1:2))))
+colnames(group_means_pitfall_graph)<-c("snakes","month",names(group_means))
+group_sds<-lapply(data_pitfall[,results_pitfall],function(x) aggregate(x,by=list(data_pitfall$snakes,data_pitfall$month),sd))
+group_sds_pitfall_graph<-cbind(group_sds[[1]][,1:2],do.call(cbind,lapply(group_sds,"[",-c(1:2))))
+colnames(group_sds_pitfall_graph)<-c("snakes","month",names(group_sds))
+colnames(group_sds_pitfall_graph)<-lapply(colnames(group_sds_pitfall_graph),function(x) paste0(x,sep="_","sd"))
+pitfall_graph<-cbind(group_means_pitfall_graph,group_sds_pitfall_graph[,-c(1:2)])
+write.csv(pitfall_graph,file=paste0(folder_results,sep="/","Figures/Fig means/pitfall.csv"))
+```
+
+### **Beating**
+
+```{r analysis of beating}
+library(glmmTMB)
+library(DHARMa)
+library(emmeans)
+library(car)
+
+models_beating<-lapply(data_beating[,beating_groups],function(x) glmmTMB(x~snakes*month+(1|site),data=data_beating,family=nbinom2,dispformula = ~snakes*month))
+lapply(models_beating,function(x) plot(simulateResiduals(x,n=1000)))
+results_beating_table<-lapply(models_beating,function(x) Anova(x,type=2))
+lapply(models_beating,function(x) pairs(emmeans(x,~snakes|month)))
+tapply(data_beating$MANT,data_beating$snakes,mean)
+tapply(data_beating$MANT,data_beating$snakes,sd)
+```
+
+### **Sweeping**
+
+```{r analysis of sweeping}
+library(glmmTMB)
+library(DHARMa)
+library(emmeans)
+library(car)
+
+models_sweeping<-lapply(data_sweeping[,sweeping_groups],function(x) glmmTMB(x~snakes*month+(1|site),data=data_sweeping,family=nbinom2(link="log"),dispformula = ~snakes*month))
+lapply(models_sweeping,function(x) plot(simulateResiduals(x,n=1000)))
+results_sweeping_table<-lapply(models_sweeping,function(x) Anova(x,type=2))
+results_sweeping<-results_sweeping_table
+lapply(models_sweeping,function(x) pairs(emmeans(x,~snakes|month)))
+lapply(models_sweeping,function(x) pairs(emmeans(x,~month|snakes)))
+tapply(data_sweeping$DIPT,data_sweeping$snakes,mean)
+tapply(data_sweeping$DIPT,data_sweeping$snakes,sd)
+```
+
+```{r results from graphics sweeping}
+results_sweeping<-lapply(results_sweeping_table,"[[","Pr(>Chisq)")
+results_sweeping_snakes<-lapply(results_sweeping, function(x) which(x[1]<0.05))
+results_sweeping_snakes<-results_sweeping_snakes[lapply(results_sweeping_snakes,length)>0]
+results_sweeping_interaction<-lapply(results_sweeping, function(x) which(x[3]<0.05))
+results_sweeping_interaction<-results_sweeping_interaction[lapply(results_sweeping_interaction,length)>0]
+results_sweeping<-unique(names(c(results_sweeping_snakes,results_sweeping_interaction)))
+group_means<-lapply(data_sweeping[,results_sweeping],function(x) aggregate(x,by=list(data_sweeping$snakes,data_sweeping$month),mean))
+group_means_sweeping_graph<-cbind(group_means[[1]][,1:2],do.call(cbind,lapply(group_means,"[",-c(1:2))))
+colnames(group_means_sweeping_graph)<-c("snakes","month",names(group_means))
+group_sds<-lapply(data_sweeping[,results_sweeping],function(x) aggregate(x,by=list(data_sweeping$snakes,data_sweeping$month),sd))
+group_sds_sweeping_graph<-cbind(group_sds[[1]][,1:2],do.call(cbind,lapply(group_sds,"[",-c(1:2))))
+colnames(group_sds_sweeping_graph)<-c("snakes","month",names(group_sds))
+colnames(group_sds_sweeping_graph)<-lapply(colnames(group_sds_sweeping_graph),function(x) paste0(x,sep="_","sd"))
+sweeping_graph<-cbind(group_means_sweeping_graph,group_sds_sweeping_graph[,-c(1:2)])
+write.csv(sweeping_graph,file=paste0(folder_results,sep="/","Figures/Fig means/sweeping.csv"))
+```
+
+# Results table
+
+```{r creating table of results}
+library(tidyverse)
+
+results_pitfall_stat<-lapply(results_pitfall_table,"[","Chisq")
+results_pitfall_p<-lapply(results_pitfall_table,"[","Pr(>Chisq)")
+results_beating_stat<-lapply(results_beating_table,"[","Chisq")
+results_beating_p<-lapply(results_beating_table,"[","Pr(>Chisq)")
+results_sweeping_stat<-lapply(results_sweeping_table,"[","Chisq")
+results_sweeping_p<-lapply(results_sweeping_table,"[","Pr(>Chisq)")
+table_pitfall<-cbind(do.call(cbind,results_pitfall_stat),do.call(cbind,results_pitfall_p))
+colnames(table_pitfall)<-mapply(function(x,y) paste0(x,sep="_",y),x=colnames(table_pitfall),y=rep(names(results_pitfall_table),2))
+table_pitfall$sampling<-rep("pitfall",nrow(table_pitfall))
+table_beating<-cbind(do.call(cbind,results_beating_stat),do.call(cbind,results_beating_p))
+colnames(table_beating)<-mapply(function(x,y) paste0(x,sep="_",y),x=colnames(table_beating),y=rep(names(results_beating_table),2))
+table_beating$sampling<-rep("beating",nrow(table_beating))
+table_sweeping<-cbind(do.call(cbind,results_sweeping_stat),do.call(cbind,results_sweeping_p))
+colnames(table_sweeping)<-mapply(function(x,y) paste0(x,sep="_",y),x=colnames(table_sweeping),y=rep(names(results_sweeping_table),2))
+table_sweeping$sampling<-rep("sweeping",nrow(table_sweeping))
+table<-bind_rows(table_pitfall,table_beating,table_sweeping)
+table<-as.data.frame(as.matrix(t(table)))
+colnames(table)<-c("pitfall_snakes","pitfall_month","pitfall_inter","beating_snakes","beating_month","beating_inter","sweeping_snakes","sweeping_month","sweeping_inter")
+table$orders<-str_sub(row.names(table),-4,-1)
+cluster<-read.csv(paste0(folder_data,"/data_diet.csv"))
+colnames(cluster)[1]<-"orders"
+table$stat<-substr(row.names(table),1,1)
+table_merged<-merge(table,cluster[,c(1,2,4)],all.x = T,by="orders")
+table<-table_merged
+
+write.csv(table_merged,file=paste0(folder_results,sep="/","Table_results/table_results.csv"))
+```
+
+```{r additional graph data}
+dipt_pitfall<-cbind(aggregate(data_pitfall$DIPT,by=list(data_pitfall$snakes),mean),aggregate(data_pitfall$DIPT,by=list(data_pitfall$snakes),sd))
+dipt_pitfall<-dipt_pitfall[,c(1,2,4)]
+colnames(dipt_pitfall)<-c("snakes","DIPT_PIT_mean","DIPT_PIT_sd")
+
+mant_beating<-cbind(aggregate(data_beating$MANT,by=list(data_beating$snakes),mean),aggregate(data_beating$MANT,by=list(data_beating$snakes),sd))
+mant_beating<-mant_beating[,c(1,2,4)]
+colnames(mant_beating)<-c("snakes","MANT_mean","MANT_sd")
+
+dipt_sweeping<-cbind(aggregate(data_sweeping$DIPT,by=list(data_sweeping$snakes),mean),aggregate(data_sweeping$DIPT,by=list(data_sweeping$snakes),sd))
+dipt_sweeping<-dipt_sweeping[,c(1,2,4)]
+colnames(dipt_sweeping)<-c("snakes","DIPT_SWEE_mean","DIPT_SWEE_sd")
+
+data_graph_year<-cbind(dipt_pitfall,mant_beating,dipt_sweeping)
+write.csv(data_graph_year,file=paste0(folder_results,sep="/","Figures/Fig means/data_graph_year.csv"))
+```
+

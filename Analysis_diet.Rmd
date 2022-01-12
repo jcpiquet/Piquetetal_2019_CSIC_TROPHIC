@@ -1,0 +1,66 @@
+---
+title: "Diet analysis"
+author: "Julien Christophe Piquet"
+date: "21/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = F)
+```
+
+# **DATA FORMATION**
+
+```{r folder}
+folder_data<-"E:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data"
+```
+
+```{r data}
+library(readxl)
+data<- read_excel(paste0(folder_data,sep="/","data_index_diet.xlsx"))
+data$order<-as.factor(data$order)
+data<-data[data$order!="Other",]
+```
+
+# **ANALYSIS**
+
+## **RRA, POO and mIRI per orders**
+
+```{r summary descriptions}
+head(data[,c(1,14)][order(data$total_rra,decreasing = T),])
+head(data[,c(1,16)][order(data$total_poo,decreasing = T),])
+head(data[,c(1,17)][order(data$total_miri,decreasing = T),])
+```
+
+
+## **Correlation RRA and POO**
+
+```{r correlation tests}
+with(data,cor.test(jun_rra,jun_poo,method="spearman"))
+with(data,cor.test(aug_rra,aug_poo,method="spearman"))
+with(data,cor.test(nov_rra,nov_poo,method="spearman"))
+with(data,cor.test(total_rra,total_poo,method="spearman"))
+```
+
+## **Grouping analysis**
+
+```{r grouping}
+library(cluster)
+library(factoextra)
+library(car)
+library(onewaytests)
+
+# Cluster
+clusters<-kmeans(data[,17],3,nstart=100)
+data$cluster<-clusters$cluster
+
+write.csv(data,file=paste0(folder_data,sep="/","data_index_diet.csv"))
+
+# Comparing IRI per cluster
+with(data,leveneTest(total_miri,cluster))
+welch<-welch.test(total_miri~cluster,data=data,rate=0.1)
+paircomp(welch, adjust.method = "holm")
+tapply(data$total_miri,data$cluster,mean)
+tapply(data$total_miri,data$cluster,sd)
+```
+
