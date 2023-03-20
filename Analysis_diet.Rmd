@@ -56,7 +56,7 @@ data$cluster<-clusters$cluster
 
 write.csv(data,file=paste0(folder_data,sep="/","data_index_diet.csv"))
 
-# Comparing IRI per cluster
+# Comparing mIRI per cluster
 with(data,leveneTest(total_miri,cluster))
 welch<-welch.test(total_miri~cluster,data=data,rate=0.1)
 paircomp(welch, adjust.method = "holm")
