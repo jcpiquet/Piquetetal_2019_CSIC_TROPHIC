@@ -131,12 +131,14 @@ total_invertebrates_sweeping<-sum(tapply(data_sweeping$ABUND,data_sweeping$snake
 sum(data_sweeping$ABUND_prey)
 length(apply(data_sweeping[,sweeping_groups],2,sum))
 
+
 # Abundance
 ## Abundance pitfall
 abundance_pitfall<-aggregate(data_pitfall[,pitfall_groups],by=list(data_pitfall$snakes,data_pitfall$month),sum)
 abundance_pitfall<-as.data.frame(abundance_pitfall)
 colnames(abundance_pitfall)<-c("snakes","month",colnames(abundance_pitfall[3:ncol(abundance_pitfall)]))
 abundance_pitfall$sampling<-rep("pitfall",nrow(abundance_pitfall))
+abundance_pitfall$month<-as.factor(abundance_pitfall$month)
 ## Abundance beating
 abundance_beating<-aggregate(data_beating[,beating_groups],by=list(data_beating$snakes,data_beating$month),sum)
 abundance_beating<-as.data.frame(abundance_beating)
@@ -147,6 +149,7 @@ abundance_sweeping<-aggregate(data_sweeping[,sweeping_groups],by=list(data_sweep
 abundance_sweeping<-as.data.frame(abundance_sweeping)
 colnames(abundance_sweeping)<-c("snakes","month",colnames(abundance_sweeping[3:ncol(abundance_sweeping)]))
 abundance_sweeping$sampling<-rep("sweeping",nrow(abundance_sweeping))
+
 
 # Constructing the table
 abundance_table<-bind_rows(abundance_pitfall,abundance_beating,abundance_sweeping)
@@ -256,7 +259,7 @@ tapply(data_pitfall$DIPT,data_pitfall$snakes,sd)
 
 ```{r results from graphics}
 results_pitfall<-lapply(results_pitfall,"[[","Pr(>Chisq)")
-results_pitfall_snakes<-lapply(results_pitfall_table, function(x) which(x[1]<0.05))
+results_pitfall_snakes<-lapply(results_pitfall, function(x) which(x[1]<0.05))
 results_pitfall_snakes<-results_pitfall_snakes[lapply(results_pitfall_snakes,length)>0]
 results_pitfall_interaction<-lapply(results_pitfall, function(x) which(x[3]<0.05))
 results_pitfall_interaction<-results_pitfall_interaction[lapply(results_pitfall_interaction,length)>0]
