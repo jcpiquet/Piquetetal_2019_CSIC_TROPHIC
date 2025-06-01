@@ -15,7 +15,7 @@ We load all required packages.
 
 ```{r packages}
 library(pacman)
-p_load(car,readxl,factoextra,cluster,dplyr,tidyverse,car,onewaytests,gplots,FSA,glmmTMB,DHARMa,emmeans,dplyr,Rmisc,tidyverse)
+p_load(car,readxl,factoextra,cluster,dplyr,tidyverse,car,onewaytests,gplots,FSA,glmmTMB,DHARMa,emmeans,dplyr,Rmisc,tidyverse, sf, terra)
 ```
 
 # **FOLDERS**
@@ -347,6 +347,10 @@ data_beating<-data_beating[,-which(names(data_beating) %in% c("FORM","STYL"))]
 data_beating<-subset(data_beating, select = -c(det,rep,sampling))
 
 data_beating[,c("site","snakes","month","sampling_type","observer","sampling_no","plant_sp")]<-lapply(data_beating[,c("site","snakes","month","sampling_type","observer","sampling_no","plant_sp")],factor)
+
+# Removing unindentified plants
+
+data_beating[data_beating$plant_sp == "??",]$plant_sp <- NA
 
 # Identifying relevant groups for analysis
 
@@ -699,6 +703,52 @@ lapply(models_beating,function(x) testOutliers(simulateResiduals(x,n=1000),type=
 results_beating_table<-lapply(models_beating,function(x) Anova(x,type=2))
 ```
 
+```{r plant species variability}
+plant_var_table <- table(data_beating$plant_sp, data_beating$snakes, data_beating$month, data_beating$site)
+
+plant_var_table <- as.data.frame(plant_var_table)
+
+colnames(plant_var_table) <- c("plant_sp", "snakes", "month","site", "freq")
+
+plant_var_table <- droplevels(plant_var_table[plant_var_table$plant_sp != "??",])
+
+levene <- list()
+
+for (sp in unique(plant_var_table$plant_sp)) {
+  # Selecting species
+  plant <- subset(plant_var_table, plant_sp == sp)
+  
+  # Running levene's test
+  results <- lapply(split(plant, plant$month), function(month) with(month, leveneTest(freq~snakes)))
+  
+  # Printing
+  levene[[sp]] <- results
+}
+
+kruskal <- list()
+
+for (sp in unique(plant_var_table$plant_sp)) {
+  # Selecting species
+  plant <- subset(plant_var_table, plant_sp == sp)
+  
+  # Running levene's test
+  results <- lapply(split(plant, plant$month), function(month) with(month, kruskal.test(freq~snakes)))
+  
+  # Printing
+  kruskal[[sp]] <- results
+}
+
+lapply(split(plant_var_table[plant_var_table$plant_sp == "RUMEX",],
+             plant_var_table[plant_var_table$plant_sp == "RUMEX",]$month), function(season) 
+               welch.test(freq ~ snakes, data = season, rate = 0.1))
+
+table <- cbind(aggregate(freq ~ snakes + month + plant_sp, plant_var_table, mean),
+               aggregate(freq ~ snakes + month + plant_sp, plant_var_table, sd)[,4])
+
+write.csv(table, "D:/Research/Projects/A_2019_CSIC_TROPHIC/Communication/Paper/Table_plants/table.csv")
+```
+
+
 ### **SWEEPING**
 
 ```{r analysis of sweeping}
@@ -771,7 +821,7 @@ sweeping_graph<-rbind(sweeping_graph,annual)
 write.csv(sweeping_graph,file=paste0(folder_results,sep="/","Figures/Fig means sweeping/data_fig.csv"))
 ```
 
-# Results table
+# **RESULTS TABLE**
 
 ```{r creating table of results}
 
@@ -799,5 +849,108 @@ table_merged<-merge(table,data_diet[,c(1,3)],all.x = T,by.x="orders",by.y="row.n
 table<-table_merged
 
 write.csv(table_merged,file=paste0(folder_results,sep="/","Table_results/table_results.csv"))
+```
+
+# **FIGURE SITE-LEVEL DIFFERENCES**
+
+```{r site-level differences}
+
+sitelevel_pitfall <- aggregate(cbind(DIPT, COLE, HEMI, HYME, ARAN, ENTO, LEPI) ~ site + month + snakes, data_pitfall, mean)
+
+sitelevel_sweeping <- aggregate(cbind(DIPT, HEMI, THYS) ~ site + month + snakes, data_sweeping, mean)
+
+write.csv(sitelevel_pitfall, file = paste0(folder_results, "/", "Figures/Fig_sitelevel/pitfall.csv"))
+write.csv(sitelevel_sweeping, file = paste0(folder_results, "/", "Figures/Fig_sitelevel/sweeping.csv"))
+
+sitelevel_pitfall_sd <- aggregate(cbind(DIPT, COLE, HEMI, HYME, ARAN, ENTO, LEPI) ~ site + month + snakes, data_pitfall, sd)
+
+sitelevel_sweeping_sd <- aggregate(cbind(DIPT, HEMI, THYS) ~ site + month + snakes, data_sweeping, sd)
+
+write.csv(sitelevel_pitfall_sd, file = paste0(folder_results, "/", "Figures/Fig_sitelevel/pitfall_sd.csv"))
+write.csv(sitelevel_sweeping_sd, file = paste0(folder_results, "/", "Figures/Fig_sitelevel/sweeping_sd.csv"))
+```
+
+# **SPATIAL ANALYSIS**
+
+```{r spatial analysis}
+
+# Loading NDVI
+
+ndvi <- rast("D:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data/NDVI/ndvi.tif")
+
+# Loading elevation
+
+elevation <- list.files("D:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data/Elevation",
+                        pattern = ".tif",
+                        full.names = T)
+
+elevation <- lapply(elevation, rast)
+
+elevation <- do.call(merge, elevation)
+
+# Loading climatic data
+
+files <- list.files("D:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data/Climate",
+                    pattern = ".tif",
+                    full.names = T)
+
+clim_data <- lapply(files, rast)
+
+names(clim_data) <- basename(files)
+
+clim_data <- rast(clim_data)
+
+# Loading sites
+ 
+sites <- st_read("D:/Research/Projects/A_2019_CSIC_TROPHIC/Research/Data/sites.shp")
+
+# Reprojecting rasters to match site CRS
+
+ndvi <- project(ndvi, crs(sites))
+
+elevation <- project(elevation, crs(sites))
+
+clim_data <- project(clim_data, crs(sites))
+
+# Extracting information
+
+sites$ndvi <- terra::extract(ndvi,
+                             sites)[,2]
+
+sites$elevation <- terra::extract(elevation,
+                                  sites)[,2]
+
+climate <- terra::extract(clim_data,
+                          sites)
+
+colnames(climate) <- c("id", "ppt", "tmax", "tmed", "tmin")
+
+sites <- cbind(sites, climate)
+
+# Analysis
+
+for (variable in c("ndvi", "elevation", "ppt", "tmax", "tmed", "tmin")) {
+  # Selecting variable
+  var <- sites[[variable]]
+  
+  # Testing homogeneity of variance
+  homog.test(var ~ snakes, sites)
+}
+
+# Testing differences
+  
+kruskal.test(ndvi ~ snakes, sites)
+
+kruskal.test(elevation ~ snakes, sites)
+
+kruskal.test(ppt ~ snakes, sites)
+
+kruskal.test(tmax ~ snakes, sites)
+
+kruskal.test(tmed ~ snakes, sites)
+
+kruskal.test(tmin ~ snakes, sites)
+
+write.csv(sites, file = "D:/Research/Projects/A_2019_CSIC_TROPHIC/Communication/Paper/Figures/Fig_envicond/data.csv")
 ```
 
